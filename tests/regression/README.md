@@ -37,3 +37,6 @@ A test skips itself when the binary lacks a module it needs.
 | Test | What it checks |
 |---|---|
 | `configure_builddir_suffix.t` | `auto/configure` generates valid object paths when `--builddir` contains `.c` or `.S`. Needs `make` and a C compiler; does not use `TEST_NGINX_BINARY` or `Test::Nginx`. Run it with `prove tests/regression/configure_builddir_suffix.t`. |
+| `h2_reset_stream_skipped_field.t` | A literal header field after an in-block HTTP/2 stream reset is skipped without closing the connection (nginx/nginx#1977). Needs the `http_v2` and `rewrite` modules. |
+| `inet6_addr_parse.t` | IPv6 text forms accepted and rejected by `ngx_inet6_addr()`, observed through realip (nginx/nginx#1915). Needs the `realip` module. |
+| `access_log_variables_disable_symlinks.t` | Requests are logged when the `access_log` path has variables and `disable_symlinks` is on (nginx/nginx#1900). |
