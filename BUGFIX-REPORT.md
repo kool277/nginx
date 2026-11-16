@@ -111,4 +111,4 @@ The HTTP/2 fix is prepared for nginx/nginx as commit `ca3ea10be` on a local bran
 
 On that branch, the regression test and all 32 nginx-tests `h2*.t` files (849 tests) pass.
 
-The branch hasn't been pushed and no pull request has been opened. Opening one posts publicly under the owner's GitHub account. Before it can be merged, the owner must agree to the F5 Contributor License Agreement by commenting on the pull request. Upstream keeps its tests in nginx/nginx-tests, so the regression test would be a separate contribution there.
+On 2026-11-16, with the owner's approval, the branch was pushed to the fork and opened as nginx/nginx#1991 (https://github.com/nginx/nginx/pull/1991). It can't be merged until the owner agrees to the F5 Contributor License Agreement in a PR comment; the CLA check fails until then. Upstream keeps its tests in nginx/nginx-tests, so the regression test would be a separate contribution there.
