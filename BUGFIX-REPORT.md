@@ -92,9 +92,23 @@ Bugs confirmed but not fixed:
   Review was limited to the code paths of the leads above. This is the largest gap in this report.
 - **New findings:** no new remotely triggerable memory-safety or request-smuggling issue was found. All four fixed bugs had already been reported publicly upstream.
 
-## Decisions that need sign-off
+## Decisions
 
-1. **Cherry-picks from open, unmerged upstream PRs:** #1780, #1918 and #1903. These are not "already fixed upstream". Each was reviewed and tested here. Their authors and messages are kept unchanged, and my regression tests are in separate `Tests:` commits.
-2. **The HTTP/2 fix is my own.** Upstream has no PR for #1977. Its approach records the real length of skipped fields and marks them with `field_start = NULL`. It's worth offering upstream.
-3. **`tests/regression/`:** this directory is new in this repository. It needs the nginx-tests `lib/` to run.
-4. **Docs page facts:** see `DOCS-REPORT.md` in the docs branch.
+The repository owner approved all four decisions on 2026-11-16.
+
+1. **Cherry-picks from open, unmerged upstream PRs:** #1780, #1918 and #1903. These are not "already fixed upstream". Each was reviewed and tested here. Their authors and messages are kept unchanged, and my regression tests are in separate `Tests:` commits. Approved.
+2. **The HTTP/2 fix is my own.** Upstream has no PR for #1977. Its approach records the real length of skipped fields and marks them with `field_start = NULL`. Approved for offering upstream; see [Upstream submission](#upstream-submission).
+3. **`tests/regression/`:** this directory is new in this repository. It needs the nginx-tests `lib/` to run. Approved.
+4. **Docs page facts:** see `DOCS-REPORT.md` in the docs branch. Approved.
+
+## Upstream submission
+
+The HTTP/2 fix is prepared for nginx/nginx as commit `ca3ea10be` on a local branch, `h2-skipped-field-1977`. The branch is based on upstream `master` at `2a3a19c6f` and follows upstream's CONTRIBUTING rules:
+
+- the source change only, with no `tests/` directory;
+- commit lines no longer than 72 characters;
+- a `Closes: https://github.com/nginx/nginx/issues/1977` trailer.
+
+On that branch, the regression test and all 32 nginx-tests `h2*.t` files (849 tests) pass.
+
+The branch hasn't been pushed and no pull request has been opened. Opening one posts publicly under the owner's GitHub account. Before it can be merged, the owner must agree to the F5 Contributor License Agreement by commenting on the pull request. Upstream keeps its tests in nginx/nginx-tests, so the regression test would be a separate contribution there.
