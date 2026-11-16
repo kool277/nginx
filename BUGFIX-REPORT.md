@@ -40,7 +40,9 @@ The suite was nginx-tests at `c0b7894`: 512 test files. Runs used `prove -j8` (`
 |---|---|---|
 | gcc 13.3, `--with-debug`, all modules listed in [Not covered](#not-covered) as enabled | PASS: 7121 tests, 38 files skipped | PASS: 7121 tests, 38 files skipped |
 | gcc ASan+UBSan, `-DNGX_DEBUG_PALLOC=1` | PASS: 7110 tests, no sanitizer reports | PASS: 7121 tests, no sanitizer reports |
-| `TEST_NGINX_UNSAFE=1` subset (19 files), gcc | PASS, 523 tests | not rerun |
+| gcc, also with `--with-control-api --with-file-aio --with-pcre-jit --with-compat` (rerun 2026-11-16 on the branch head) | not run | PASS: 7227 tests, 36 files skipped; the Control API tests now run |
+| ASan+UBSan with the same options (rerun 2026-11-16) | not run | PASS: 7227 tests, no sanitizer reports |
+| `TEST_NGINX_UNSAFE=1` subset (19 files), gcc | PASS, 523 tests | `control_api_unix.t`, `control_api_upgrade.t`, `binary_upgrade.t`: PASS (24 tests); the rest not rerun |
 | `TEST_NGINX_UNSAFE=1` subset, ASan | `binary_upgrade.t` fails, caused by this environment (see below) | not rerun |
 
 Notes on the results:
@@ -79,7 +81,7 @@ Bugs confirmed but not fixed:
 
 ## Not covered
 
-- **Modules not built:** `http_image_filter_module` (no libgd, libpng or libjpeg headers on this host) and `google_perftools_module`. Every other `--with-*` option from `auto/configure --help` was enabled. libxml2, libxslt, GeoIP, zlib and libatomic_ops were built from source because the host has no sudo.
+- **Modules not built:** `http_image_filter_module` (no libgd, libpng or libjpeg headers on this host) and `google_perftools_module`. Every other module `--with-*` option from `auto/configure --help` was enabled. **Correction (2026-11-16):** until then, the builds also lacked `--with-control-api`, `--with-file-aio`, `--with-pcre-jit` and `--with-compat`, because the script that listed the options missed names with hyphens. They are now enabled, and the suites were rerun with them; see [Test results](#test-results). libxml2, libxslt, GeoIP, zlib and libatomic_ops were built from source because the host has no sudo.
 - **Platforms:** Linux x86-64 only. win32, kqueue, event ports, `/dev/poll`, and 32-bit or big-endian targets were not built or reviewed.
 - **Sanitizers:** only gcc's ASan+UBSan. clang's sanitizer runtime from conda-forge needs x86-64-v3, and the host CPU is baseline x86-64. No MSan, TSan or fuzzing.
 - **Manual review:** the high-risk areas listed in the task were not systematically hand-reviewed:
