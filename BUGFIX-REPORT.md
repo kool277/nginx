@@ -105,12 +105,20 @@ The repository owner approved all four decisions on 2026-11-16.
 
 ## Upstream submission
 
-The HTTP/2 fix is prepared for nginx/nginx as commit `ca3ea10be` on a local branch, `h2-skipped-field-1977`. The branch is based on upstream `master` at `2a3a19c6f` and follows upstream's CONTRIBUTING rules:
+The HTTP/2 fix is offered to nginx/nginx as commit `b9e9470ad` on branch `h2-skipped-field-1977`. The branch is based on upstream `master` at `2a3a19c6f` and follows upstream's CONTRIBUTING rules:
 
 - the source change only, with no `tests/` directory;
 - commit lines no longer than 72 characters;
+- no trailing dot on the subject line;
 - a `Closes: https://github.com/nginx/nginx/issues/1977` trailer.
 
 On that branch, the regression test and all 32 nginx-tests `h2*.t` files (849 tests) pass.
 
-On 2026-11-16, with the owner's approval, the branch was pushed to the fork and opened as nginx/nginx#1991 (https://github.com/nginx/nginx/pull/1991). It can't be merged until the owner agrees to the F5 Contributor License Agreement in a PR comment; the CLA check fails until then. Upstream keeps its tests in nginx/nginx-tests, so the regression test would be a separate contribution there.
+On 2026-11-16, with the owner's approval, the branch was pushed to the fork and opened as nginx/nginx#1991 (https://github.com/nginx/nginx/pull/1991). Upstream keeps its tests in nginx/nginx-tests, so the regression test would be a separate contribution there.
+
+On 2026-11-18 a reviewer asked for two changes:
+
+- **Drop the trailing dot from the commit subject.** Done. The commit was reworded from `ca3ea10be` to `b9e9470ad`. Only the subject's final dot changed; the code and the author are the same.
+- **Agree to the F5 Contributor License Agreement.** The owner has to do this personally, in a PR comment. The CLA check fails until then.
+
+The PR's other checks (commit message, whitespace, version bump and check-pr) wait for a maintainer to approve the run, as they do for every first-time contributor. The runs listed as failed for `ca3ea10be` on 2026-11-16 never started a job, so they checked nothing. Upstream's commit message, whitespace and version bump checks were run locally on `b9e9470ad`, and all three pass. check-pr calls a workflow in a private repository and couldn't be run.
