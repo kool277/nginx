@@ -66,6 +66,8 @@ static u_char *ngx_http_v2_state_read_data(ngx_http_v2_connection_t *h2c,
     u_char *pos, u_char *end);
 static u_char *ngx_http_v2_state_headers(ngx_http_v2_connection_t *h2c,
     u_char *pos, u_char *end);
+static u_char *ngx_http_v2_state_trailers(ngx_http_v2_connection_t *h2c,
+    u_char *pos, u_char *end);
 static u_char *ngx_http_v2_state_header_block(ngx_http_v2_connection_t *h2c,
     u_char *pos, u_char *end);
 static u_char *ngx_http_v2_state_field_len(ngx_http_v2_connection_t *h2c,
@@ -164,6 +166,7 @@ static ngx_int_t ngx_http_v2_priority(ngx_http_request_t *r,
 static ngx_int_t ngx_http_v2_process_priority(ngx_http_request_t *r);
 static ngx_int_t ngx_http_v2_construct_host_header(ngx_http_request_t *r);
 static void ngx_http_v2_run_request(ngx_http_request_t *r);
+static void ngx_http_v2_end_request_body(ngx_http_v2_stream_t *stream);
 static ngx_int_t ngx_http_v2_process_request_body(ngx_http_request_t *r,
     u_char *pos, size_t size, ngx_uint_t last, ngx_uint_t flush);
 static ngx_int_t ngx_http_v2_filter_request_body(ngx_http_request_t *r);
@@ -1196,17 +1199,11 @@ ngx_http_v2_state_headers(ngx_http_v2_connection_t *h2c, u_char *pos,
         return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_SIZE_ERROR);
     }
 
-    if (h2c->state.length == size) {
+    if (h2c->state.length == size && h2c->state.sid > h2c->last_sid) {
         ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
                       "client sent HEADERS frame with empty header block");
 
         return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_SIZE_ERROR);
-    }
-
-    if (h2c->goaway) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, h2c->connection->log, 0,
-                       "skipping http2 HEADERS frame");
-        return ngx_http_v2_state_skip(h2c, pos, end);
     }
 
     if ((size_t) (end - pos) < size) {
@@ -1240,7 +1237,7 @@ ngx_http_v2_state_headers(ngx_http_v2_connection_t *h2c, u_char *pos,
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, h2c->connection->log, 0,
                    "http2 HEADERS frame sid:%ui", h2c->state.sid);
 
-    if (h2c->state.sid % 2 == 0 || h2c->state.sid <= h2c->last_sid) {
+    if (h2c->state.sid % 2 == 0) {
         ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
                       "client sent HEADERS frame with incorrect identifier "
                       "%ui, the last was %ui", h2c->state.sid, h2c->last_sid);
@@ -1248,7 +1245,13 @@ ngx_http_v2_state_headers(ngx_http_v2_connection_t *h2c, u_char *pos,
         return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_PROTOCOL_ERROR);
     }
 
-    h2c->last_sid = h2c->state.sid;
+    if (h2c->state.sid <= h2c->last_sid) {
+        return ngx_http_v2_state_trailers(h2c, pos, end);
+    }
+
+    if (!h2c->goaway) {
+        h2c->last_sid = h2c->state.sid;
+    }
 
     h2c->state.pool = ngx_create_pool(1024, h2c->connection->log);
     if (h2c->state.pool == NULL) {
@@ -1260,6 +1263,15 @@ ngx_http_v2_state_headers(ngx_http_v2_connection_t *h2c, u_char *pos,
 
     h2c->state.header_limit = cscf->large_client_header_buffers.size
                               * cscf->large_client_header_buffers.num;
+
+    if (h2c->goaway) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, h2c->connection->log, 0,
+                       "skipping http2 HEADERS frame");
+
+        /* the header block is decoded to keep the HPACK table in sync */
+
+        return ngx_http_v2_state_header_block(h2c, pos, end);
+    }
 
     h2scf = ngx_http_get_module_srv_conf(h2c->http_connection->conf_ctx,
                                          ngx_http_v2_module);
@@ -1363,6 +1375,120 @@ rst_stream:
 
     if (ngx_http_v2_send_rst_stream(h2c, h2c->state.sid, status) != NGX_OK) {
         return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_INTERNAL_ERROR);
+    }
+
+    /* frames the client sent before it received RST_STREAM are ignored */
+
+    node = ngx_http_v2_get_node_by_id(h2c, h2c->state.sid, 1);
+
+    if (node == NULL) {
+        return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_INTERNAL_ERROR);
+    }
+
+    if (!node->priority_set) {
+        ngx_queue_insert_tail(&h2c->closed, &node->reuse);
+        h2c->closed_nodes++;
+    }
+
+    node->rst_sent = 1;
+
+    return ngx_http_v2_state_header_block(h2c, pos, end);
+}
+
+
+static u_char *
+ngx_http_v2_state_trailers(ngx_http_v2_connection_t *h2c, u_char *pos,
+    u_char *end)
+{
+    ngx_http_v2_node_t        *node;
+    ngx_http_v2_stream_t      *stream;
+    ngx_http_core_srv_conf_t  *cscf;
+
+    node = ngx_http_v2_get_node_by_id(h2c, h2c->state.sid, 0);
+
+    if (node == NULL) {
+        ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
+                      "client sent HEADERS frame with incorrect identifier "
+                      "%ui, the last was %ui", h2c->state.sid, h2c->last_sid);
+
+        return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_PROTOCOL_ERROR);
+    }
+
+    if (node->stream == NULL && !node->rst_sent) {
+        ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
+                      "client sent HEADERS frame for closed stream %ui",
+                      h2c->state.sid);
+
+        return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_PROTOCOL_ERROR);
+    }
+
+    stream = node->stream;
+
+    if (stream && stream->in_closed) {
+        ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
+                      "client sent HEADERS frame for half-closed stream %ui",
+                      h2c->state.sid);
+
+        return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_PROTOCOL_ERROR);
+    }
+
+    /*
+     * the header block is decoded even if it is not used,
+     * to keep the HPACK dynamic table in sync
+     */
+
+    h2c->state.stream = NULL;
+
+    h2c->state.pool = ngx_create_pool(1024, h2c->connection->log);
+    if (h2c->state.pool == NULL) {
+        return ngx_http_v2_connection_error(h2c, NGX_HTTP_V2_INTERNAL_ERROR);
+    }
+
+    cscf = ngx_http_get_module_srv_conf(h2c->http_connection->conf_ctx,
+                                        ngx_http_core_module);
+
+    h2c->state.header_limit = cscf->large_client_header_buffers.size
+                              * cscf->large_client_header_buffers.num;
+
+    if (stream == NULL) {
+        /* the client sent the frame before it received RST_STREAM */
+
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, h2c->connection->log, 0,
+                       "skipping http2 HEADERS frame for reset stream %ui",
+                       h2c->state.sid);
+
+        goto block;
+    }
+
+    if (!(h2c->state.flags & NGX_HTTP_V2_END_STREAM_FLAG)) {
+        ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
+                      "client sent trailers without END_STREAM flag "
+                      "for stream %ui", h2c->state.sid);
+
+        if (ngx_http_v2_terminate_stream(h2c, stream,
+                                         NGX_HTTP_V2_PROTOCOL_ERROR)
+            == NGX_ERROR)
+        {
+            return ngx_http_v2_connection_error(h2c,
+                                                NGX_HTTP_V2_INTERNAL_ERROR);
+        }
+
+        goto block;
+    }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, h2c->connection->log, 0,
+                   "http2 trailers sid:%ui", h2c->state.sid);
+
+    stream->request->request_length += h2c->state.length;
+
+    h2c->state.stream = stream;
+    h2c->state.trailers = 1;
+
+block:
+
+    if (h2c->state.length == 0) {
+        /* an empty trailer section */
+        return ngx_http_v2_state_header_complete(h2c, pos, end);
     }
 
     return ngx_http_v2_state_header_block(h2c, pos, end);
@@ -1784,6 +1910,39 @@ ngx_http_v2_state_process_header(ngx_http_v2_connection_t *h2c, u_char *pos,
     r = h2c->state.stream->request;
     fc = r->connection;
 
+    if (h2c->state.trailers) {
+
+        if (header->name.data[0] == ':'
+            || ngx_http_v2_validate_header(r, header) != NGX_OK)
+        {
+            ngx_log_error(NGX_LOG_INFO, h2c->connection->log, 0,
+                          "client sent invalid trailer: \"%V\"",
+                          &header->name);
+
+            h2c->state.trailers = 0;
+
+            if (ngx_http_v2_terminate_stream(h2c, h2c->state.stream,
+                                             NGX_HTTP_V2_PROTOCOL_ERROR)
+                == NGX_ERROR)
+            {
+                return ngx_http_v2_connection_error(h2c,
+                                                    NGX_HTTP_V2_INTERNAL_ERROR);
+            }
+
+            h2c->state.stream = NULL;
+
+            return ngx_http_v2_state_header_complete(h2c, pos, end);
+        }
+
+        /* trailers are discarded, as for HTTP/1.1 chunked requests */
+
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "http2 trailer: \"%V: %V\"",
+                       &header->name, &header->value);
+
+        return ngx_http_v2_state_header_complete(h2c, pos, end);
+    }
+
     /* TODO Optimization: validate headers while parsing. */
     if (ngx_http_v2_validate_header(r, header) != NGX_OK) {
         ngx_http_finalize_request(r, NGX_HTTP_BAD_REQUEST);
@@ -1925,8 +2084,15 @@ ngx_http_v2_state_header_complete(ngx_http_v2_connection_t *h2c, u_char *pos,
     stream = h2c->state.stream;
 
     if (stream) {
-        ngx_http_v2_run_request(stream->request);
+        if (h2c->state.trailers) {
+            ngx_http_v2_end_request_body(stream);
+
+        } else {
+            ngx_http_v2_run_request(stream->request);
+        }
     }
+
+    h2c->state.trailers = 0;
 
     if (!h2c->state.keep_pool) {
         ngx_destroy_pool(h2c->state.pool);
@@ -2719,7 +2885,7 @@ ngx_http_v2_state_headers_save(ngx_http_v2_connection_t *h2c, u_char *pos,
     ngx_http_request_t        *r;
     ngx_http_core_srv_conf_t  *cscf;
 
-    if (h2c->state.stream) {
+    if (h2c->state.stream && !h2c->state.trailers) {
         r = h2c->state.stream->request;
         rev = r->connection->read;
 
@@ -4264,6 +4430,45 @@ ngx_http_v2_read_request_body(ngx_http_request_t *r)
 }
 
 
+static void
+ngx_http_v2_end_request_body(ngx_http_v2_stream_t *stream)
+{
+    ngx_int_t            rc;
+    ngx_connection_t    *fc;
+    ngx_http_request_t  *r;
+
+    /* trailers end the request body as a DATA frame with END_STREAM does */
+
+    stream->in_closed = 1;
+
+    if (stream->skip_data) {
+        return;
+    }
+
+    r = stream->request;
+    fc = r->connection;
+
+    if (r->reading_body && !r->request_body_no_buffering) {
+        return;
+    }
+
+    if (r->headers_in.content_length_n < 0 && !r->headers_in.chunked) {
+        return;
+    }
+
+    if (r->request_body) {
+        rc = ngx_http_v2_process_request_body(r, NULL, 0, 1, 0);
+
+        if (rc != NGX_OK && rc != NGX_AGAIN) {
+            stream->skip_data = 1;
+            ngx_http_finalize_request(r, rc);
+        }
+
+        ngx_http_run_posted_requests(fc);
+    }
+}
+
+
 static ngx_int_t
 ngx_http_v2_process_request_body(ngx_http_request_t *r, u_char *pos,
     size_t size, ngx_uint_t last, ngx_uint_t flush)
@@ -4556,7 +4761,7 @@ ngx_http_v2_read_client_request_body_handler(ngx_http_request_t *r)
 
     window = buf->end - buf->start;
 
-    if (h2c->state.stream == stream) {
+    if (h2c->state.stream == stream && !h2c->state.trailers) {
         window -= h2c->state.length;
     }
 
@@ -4652,7 +4857,7 @@ ngx_http_v2_read_unbuffered_request_body(ngx_http_request_t *r)
     window = buf->end - buf->start;
     h2c = stream->connection;
 
-    if (h2c->state.stream == stream) {
+    if (h2c->state.stream == stream && !h2c->state.trailers) {
         window -= h2c->state.length;
     }
 
@@ -4764,6 +4969,10 @@ ngx_http_v2_close_stream(ngx_http_v2_stream_t *stream, ngx_int_t rc)
     if (h2c->state.stream == stream) {
         h2c->state.stream = NULL;
     }
+
+    /* RST_STREAM was sent unless both sides of the stream were closed */
+    node->rst_sent = stream->rst_sent || !stream->in_closed
+                     || !stream->out_closed;
 
     node->stream = NULL;
 

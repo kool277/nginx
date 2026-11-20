@@ -89,6 +89,7 @@ typedef struct {
     unsigned                         parse_name:1;
     unsigned                         parse_value:1;
     unsigned                         index:1;
+    unsigned                         trailers:1;
     ngx_http_v2_header_t             header;
     size_t                           header_limit;
     u_char                           field_state;
@@ -176,6 +177,7 @@ struct ngx_http_v2_node_s {
     ngx_http_v2_stream_t            *stream;
     ngx_http_priority_t              priority;
     ngx_uint_t                       priority_set; /* unsigned priority_set:1 */
+    ngx_uint_t                       rst_sent;     /* unsigned rst_sent:1 */
 };
 
 
