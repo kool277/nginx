@@ -2801,6 +2801,16 @@ ngx_http_set_disable_symlinks(ngx_http_request_t *r,
         return NGX_ERROR;
     }
 
+    if (of->test_dir
+        && from.len == path->len + 1
+        && from.data[path->len] == '/'
+        && ngx_memcmp(path->data, from.data, path->len) == 0)
+    {
+        /* testing the "from" directory itself, without the trailing slash */
+        of->disable_symlinks = NGX_DISABLE_SYMLINKS_OFF;
+        return NGX_OK;
+    }
+
     if (from.len == 0
         || from.len > path->len
         || ngx_memcmp(path->data, from.data, from.len) != 0)
