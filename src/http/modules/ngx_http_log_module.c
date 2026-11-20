@@ -503,6 +503,24 @@ ngx_http_log_script_write(ngx_http_request_t *r, ngx_http_log_script_t *script,
             return len;
         }
 
+        if (clcf->alias == NGX_MAX_SIZE_T_VALUE
+            && (!r->add_uri_to_alias || r->uri.len == 0))
+        {
+            /*
+             * an alias with variables is mapped to the whole path,
+             * so the directory of this path is tested
+             */
+
+            while (root > 0 && path.data[root - 1] != '/') {
+                root--;
+            }
+
+            if (root > 1) {
+                /* without the trailing slash */
+                root--;
+            }
+        }
+
         if (root == 0) {
             /* "root /" is stored as an empty string */
             ngx_str_set(&path, "/");
