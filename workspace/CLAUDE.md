@@ -109,7 +109,7 @@ WRAP=server V=1 $W/work/doctest/check.sh content/nginx/<path>.md 3   # one block
 $W/work/doctest/mmd.sh content/nginx/<path>.md         # validate mermaid blocks
 ```
 
-- `check.sh` uses `nginx/objs.gcc/nginx` unless `NGINX_BIN` says otherwise. To make a page's examples testable without root, it:
+- `check.sh` uses `nginx/objs.ctl/nginx` unless `NGINX_BIN` says otherwise. That build has no Perl module. Don't point the harness at `objs.gcc`: nginx clears its environment before embedded Perl starts, so any block with an `http` context fails with "Can't locate nginx.pm". `nginx -t` checks that directories such as `working_directory` exist, so test such blocks on a copy of the page with the path replaced. To make a page's examples testable without root, the harness:
   - rewrites `/etc/nginx`, `/var/log/nginx` and `/data/` into a temporary prefix;
   - moves ports below 1024 to 18000+port;
   - maps `*.example.com` and `*.example.org` hosts, except `www.`, to 127.0.0.1 (D15);
