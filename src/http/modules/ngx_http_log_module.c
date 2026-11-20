@@ -503,8 +503,14 @@ ngx_http_log_script_write(ngx_http_request_t *r, ngx_http_log_script_t *script,
             return len;
         }
 
-        path.data[root] = '\0';
-        path.len = root;
+        if (root == 0) {
+            /* "root /" is stored as an empty string */
+            ngx_str_set(&path, "/");
+
+        } else {
+            path.data[root] = '\0';
+            path.len = root;
+        }
 
         ngx_memzero(&of, sizeof(ngx_open_file_info_t));
 

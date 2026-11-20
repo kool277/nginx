@@ -40,3 +40,4 @@ A test skips itself when the binary lacks a module it needs.
 | `h2_reset_stream_skipped_field.t` | A literal header field after an in-block HTTP/2 stream reset is skipped without closing the connection (nginx/nginx#1977). Needs the `http_v2` and `rewrite` modules. |
 | `inet6_addr_parse.t` | IPv6 text forms accepted and rejected by `ngx_inet6_addr()`, observed through realip (nginx/nginx#1915). Needs the `realip` module. |
 | `access_log_variables_disable_symlinks.t` | Requests are logged when the `access_log` path has variables and `disable_symlinks` is on (nginx/nginx#1900). |
+| `access_log_variables_root_slash.t` | Requests are logged when the `access_log` path has variables and the root is `/`, which is stored as an empty string. With `disable_symlinks off`, the default, every request that the static module didn't serve was dropped. Needs the `rewrite` module. |
