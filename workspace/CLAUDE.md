@@ -16,7 +16,7 @@ This is a working directory for two forks, not a project. The outer git repo has
 
 A backup copy of this file and `LEDGER.md` lives in the nginx fork, in `workspace/` on branch `claude/bugfixes-and-docs`. The copies here are the working ones. Refresh the backup in the same commit whenever you commit to that branch.
 
-**`LEDGER.md` is the running record. Read it first.** It holds decisions D1–D19, bug leads L1–L13 with their status, the docs page log with source citations, and dated session notes. Add a dated entry for every decision, commit or push. The deliverables are committed in the repos and must be kept current: `nginx/BUGFIX-REPORT.md` and `nginx.docs/DOCS-REPORT.md`. Owner sign-off is tracked in their "Decisions" sections.
+**`LEDGER.md` is the running record. Read it first.** It holds decisions D1–D19, bug leads L1–L16 with their status, the docs page log with source citations, and dated session notes. Add a dated entry for every decision, commit or push. The deliverables are committed in the repos and must be kept current: `nginx/BUGFIX-REPORT.md` and `nginx.docs/DOCS-REPORT.md`. Owner sign-off is tracked in their "Decisions" sections.
 
 ## Host constraints
 
@@ -65,7 +65,7 @@ TEST_NGINX_BINARY=$PWD/objs.gcc/nginx PERL5LIB=../deps/perl5/lib/perl5 \
 
 `configure_builddir_suffix.t` needs only `make` and a compiler, not a binary.
 
-Expected results on the branch head: gcc and ASan both pass 7227 tests, with 36 files skipped. The reasons for every skip are in `BUGFIX-REPORT.md`. Some files are skipped on purpose and shouldn't be enabled on this host: they need root or a wildcard `listen`. `TEST_NGINX_UNSAFE=1` files run separately. `binary_upgrade.t` fails only under ASan, because nginx clears its environment on re-exec and loses `ASAN_OPTIONS`; that's a known artifact of this setup, not a bug.
+Expected results on the branch head: gcc and ASan both pass 7227 tests, with 36 files skipped, and the 8 regression test files (93 tests) pass on both. The reasons for every skip are in `BUGFIX-REPORT.md`. Some files are skipped on purpose and shouldn't be enabled on this host: they need root or a wildcard `listen`. `TEST_NGINX_UNSAFE=1` files run separately. `binary_upgrade.t` fails only under ASan, because nginx clears its environment on re-exec and loses `ASAN_OPTIONS`; that's a known artifact of this setup, not a bug.
 
 Test::Nginx's "no sanitizer errors" check never sees UBSan `runtime error` lines, so a passing ASan run says nothing about UBSan. To find them, run each file alone with its test directory kept and searched: `cd nginx-tests && ls *.t | SANSCAN_OUT=$W/work/results/<label> xargs -P4 -n1 sh $W/work/sanscan.sh`. The last scan (2026-11-20) left 44 reports outside the deliberate misaligned accesses, all in base nginx code; see `BUGFIX-REPORT.md`.
 
@@ -76,7 +76,8 @@ Static analysis output is in `work/analysis/` (cppcheck, scan-build, gcc `-fanal
 ## nginx: branches and commits
 
 - `claude/bugfixes-and-docs` is the fork's work branch. It carries `BUGFIX-REPORT.md` and `tests/regression/`, which upstream doesn't have. This clone fetches only `master` from `origin`, so there is no `origin/claude/bugfixes-and-docs` ref: check the fork's branch with `git ls-remote origin` before pushing.
-- `h2-skipped-field-1977` is upstream PR **nginx/nginx#1991**. It's one commit, based on upstream `master` at `2a3a19c6f`, and contains source changes only. It can't merge until the owner personally comments the F5 CLA agreement text on the PR. Never post that comment for them.
+- `h2-skipped-field-1977` is upstream PR **nginx/nginx#1991**. It's one commit, based on upstream `master` at `2a3a19c6f`, and contains source changes only. The owner agreed to the F5 CLA on the PR on 2026-11-18, all its checks pass, and it waits for a maintainer's review. Only the owner may agree to a CLA: never post that text for them.
+- Upstream PR **nginx/nginx#2008**, from another contributor, addresses #1955 with the same design as L9 but misses three cases that L9 handles. Read decision 9 in `BUGFIX-REPORT.md` before offering L9 upstream.
 - Upstream commit format:
   - The subject has an area prefix (`HTTP/2:`, `Core:`, `Upstream:`, ...) and **no trailing dot**. The maintainer asked for this on #1991; older commits on the fork branch still end with a dot.
   - Lines are at most 72 characters.
@@ -84,7 +85,7 @@ Static analysis output is in `work/analysis/` (cppcheck, scan-build, gcc `-fanal
   - Upstream PRs contain no `tests/` changes. Upstream keeps its tests in nginx/nginx-tests.
   - Follow the nginx code style: https://nginx.org/en/docs/dev/development_guide.html#code_style
 - If an open upstream PR already has a correct minimal fix, use `git cherry-pick -x` and keep its author and message unchanged. Put your regression test in a separate `Tests: ...` commit (D9, D12). Cherry-picking an unmerged PR needs owner sign-off.
-- Pushing to upstream, opening PRs and commenting are public actions under the owner's account. Ask first.
+- Pushing to upstream, opening PRs and commenting are public actions under the owner's account. Ask first. Pushes to the fork show upstream too: the fork has issues disabled, so `#N`, `nginx/nginx#N` and issue URLs in a commit message pushed to it add a "referenced" entry on that nginx/nginx issue or PR. Name upstream numbers in commit messages only where that link is wanted, such as a fix's `Closes:` trailer.
 - A new memory-safety or request-smuggling bug that can be triggered remotely and that you found yourself stays on a local branch, unpushed, and goes to the owner (D4). Fixes for publicly reported upstream issues may be pushed.
 
 ## nginx.docs
